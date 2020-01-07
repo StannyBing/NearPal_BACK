@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE generatorConfiguration
+    PUBLIC " -//mybatis.org//DTD MyBatis Generator Configuration 1.0//EN"
+    "http://mybatis.org/dtd/mybatis-generator-config_1_0.dtd">
+<generatorConfiguration>
+
+    <!-- 指定数据连接驱动jar地址 -->
+    <classPathEntry
+        location="C:\Users\dell\.m2\repository\mysql\mysql-connector-java\8.0.17\mysql-connector-java-8.0.17.jar"/>
+
+    <context id="near_pal" targetRuntime="MyBatis3">
+        <!-- 注释 -->
+        <commentGenerator>
+            <property name="suppressAllComments" value="true"/><!-- 是否取消注释 -->
+            <property name="suppressDate" value="true"/><!-- 是否生成注释代时间戳-->
+        </commentGenerator>
+
+        <!-- 定义如何连接目标数据库 -->
+        <jdbcConnection driverClass="com.mysql.jdbc.Driver"
+                        connectionURL="jdbc:mysql://39.106.180.194:3306/near_pal?serverTimezone=UTC" userId="admin_user"
+                        password="123!@#qwe">
+        </jdbcConnection>
+
+        <!-- 类型转换 -->
+        <javaTypeResolver>
+            <!-- 是否使用bigDecimal， false可自动转化以下类型（Long, Integer, Short, etc.） -->
+            <property name="forceBigDecimals" value="false"/>
+        </javaTypeResolver>
+
+        <!-- 生成实体类的包名和位置 注意targetProject的值为实体类放在工程中具体位置的相对路径，-->
+        <javaModelGenerator targetPackage="com.stanny.nearpal.entity"
+                            targetProject="src/main/java">
+            <property name="enableSubPackages" value="false"/>
+            <property name="trimStrings" value="true"/><!-- 是否针对string类型的字段在set的时候进行trim调用 -->
+        </javaModelGenerator>
+
+        <!-- 指定生成 SQL 映射文件所属的包和的目标项目 -->
+        <sqlMapGenerator targetPackage="mapping" targetProject="src/main/resources">
+            <!-- 是否在当前路径下新加一层schema-->
+            <property name="enableSubPackages" value="false"/>
+        </sqlMapGenerator>
+
+        <!-- 生成mapper的包名和位置，生成mapper的包名和位置.gacl.dao这个包下 -->
+        <javaClientGenerator type="XMLMAPPER" targetPackage="com.stanny.nearpal.mapper" targetProject="src/main/java">
+            <property name="enableSubPackages" value="false"/>
+        </javaClientGenerator>
+
+        <!-- 配置表信息，设置要生成的表名 -->
+        <table tableName="tb_user" domainObjectName="TUser" enableCountByExample="false" enableUpdateByExample="false"
+               enableDeleteByExample="false" enableSelectByExample="false" selectByExampleQueryId="false">
+        </table>
+
+        <table tableName="tb_letter" domainObjectName="TLetter" enableCountByExample="false" enableUpdateByExample="false"
+               enableDeleteByExample="false" enableSelectByExample="false" selectByExampleQueryId="false">
+        </table>
+
+        <table tableName="tb_stamp" domainObjectName="TStamp" enableCountByExample="false" enableUpdateByExample="false"
+               enableDeleteByExample="false" enableSelectByExample="false" selectByExampleQueryId="false">
+        </table>
+
+        <table tableName="tb_penpal" domainObjectName="TPenPal" enableCountByExample="false" enableUpdateByExample="false"
+               enableDeleteByExample="false" enableSelectByExample="false" selectByExampleQueryId="false">
+        </table>
+    </context>
+</generatorConfiguration>

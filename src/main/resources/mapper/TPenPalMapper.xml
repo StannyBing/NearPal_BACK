@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.stanny.nearpal.mapper.TPenPalMapper">
+
+    <select id="selectMyPenpal" resultType="com.stanny.nearpal.entity.TUser" parameterType="java.lang.Integer">
+        select
+            a.*
+        from
+            tb_user a,
+            tb_penpal b
+        where
+            b.userid = #{userid, jdbcType=INTEGER}
+            and b.penpalid = a.id
+            order by b.createtime
+    </select>
+
+</mapper>
