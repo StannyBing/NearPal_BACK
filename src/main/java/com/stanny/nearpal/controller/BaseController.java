@@ -25,15 +25,21 @@ public class BaseController {
     HttpServletRequest request;
 
     protected TUser currentUser() {
-        Object obj;
+        Object obj = null;
         request.getSession();
-        if (redisClientUtil.isEnable()) {
-            String token = request.getHeader("cookie");
-            obj = redisClientUtil.getObject(token);
-        } else {
+        try {
+            if (redisClientUtil.isEnable()) {
+                String token = request.getHeader("cookie");
+                obj = redisClientUtil.getObject(token);
+            }
+            if (obj == null) {
+                obj = request.getSession().getAttribute("user");
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
             obj = request.getSession().getAttribute("user");
         }
-        if (Objects.isNull(obj)) {
+        if (Objects.isNull(obj) || !(obj instanceof TUser)) {
             return null;
         }
         return (TUser) obj;
@@ -41,27 +47,26 @@ public class BaseController {
 
     protected void updateUser(TUser user) {
         request.getSession();
-        if (redisClientUtil.isEnable()) {
-            String token = request.getHeader("cookie");
-            if (token.isEmpty()){
-                token = request.getSession().getId();
-            }
-            try {
-                redisClientUtil.expire(token, 60*60*24);
+        try {
+            if (redisClientUtil.isEnable()) {
+                String token = request.getHeader("cookie");
+                if (token.isEmpty()) {
+                    token = request.getSession().getId();
+                }
+                redisClientUtil.expire(token, 60 * 60 * 48);
                 redisClientUtil.setobj(token, user);
-            } catch (Exception e) {
-                e.printStackTrace();
             }
-        } else {
-            String token = request.getSession().getId();
-            request.getSession().setAttribute(token, user);
+        } catch (Exception e) {
+            e.printStackTrace();
         }
+        String token = request.getSession().getId();
+        request.getSession().setAttribute(token, user);
     }
 
     protected BaseResult success(Object data, String message) {
         BaseResult<Object> result = new BaseResult<>();
         result.setCode(ResultInfo.SUCCESS.getCode());
-        result.setMsg(ResultInfo.SUCCESS.getMsg());
+        result.setMsg(message);
         result.setData(data);
         return result;
     }

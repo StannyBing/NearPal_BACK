@@ -7,6 +7,8 @@ import com.stanny.nearpal.service.UserService;
 
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+
 /**
  * Created by Xiangb on 2019/12/17.
  * 功能：
@@ -14,4 +16,8 @@ import org.springframework.stereotype.Service;
 @Service
 class UserServiceImpl extends ServiceImpl<TUserMapper, TUser> implements UserService {
 
+    @Override
+    public List<TUser> getRandomUser(Integer userid) {
+        return baseMapper.selectRandomUser(userid);
+    }
 }

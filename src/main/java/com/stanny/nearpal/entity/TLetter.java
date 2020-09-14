@@ -62,6 +62,9 @@ public class TLetter extends Model<TUser> {
     @ApiModelProperty(value = "收件人id")
     private Integer acceptuserid;
 
-    @ApiModelProperty(value = "是否为随机信件")
+    @ApiModelProperty(value = "是否为旅行信件")
     private Integer israndom;
+
+    @ApiModelProperty(value = "信件流转用户id")
+    private String randomuserids;
 }

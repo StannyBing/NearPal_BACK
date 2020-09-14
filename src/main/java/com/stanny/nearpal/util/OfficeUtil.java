@@ -1,13 +1,15 @@
 package com.stanny.nearpal.util;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.stanny.nearpal.entity.TLetter;
-import com.stanny.nearpal.util.jpush.JPushService;
-import com.stanny.nearpal.util.jpush.PushBean;
+import com.stanny.nearpal.entity.TUser;
+import com.stanny.nearpal.service.LetterService;
+import com.stanny.nearpal.service.UMPushService;
 
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.Date;
-import java.util.HashMap;
+import java.util.List;
 
 /**
  * Created by Xiangb on 2020/1/6.
@@ -24,7 +26,31 @@ public class OfficeUtil {
         return officeUtil;
     }
 
-    public void sendOfficeLetter(JPushService pushService, String letterdetail, Integer acceptuserids) {
+    /**
+     * 匹配一份旅行信件
+     *
+     * @param user
+     */
+    public boolean addNewLetter(LetterService letterService, TUser user) {
+        QueryWrapper<TLetter> query = new QueryWrapper<>();
+        query.lambda().eq(TLetter::getIsrandom, 1)
+                .le(TLetter::getAccepttime, new Date(System.currentTimeMillis() - 1000 * 60 * 60 * 12))
+                .ne(TLetter::getSenduserid, user.getId())
+                .ne(TLetter::getAcceptuserid, user.getId())
+                .ne(TLetter::getMstatus, 3);//将未读的还剩不到12个小时就会过期的不是自己发送或不是自己已经收到的的旅行信件重新分配给新人
+        List<TLetter> letters = letterService.list(query);
+        if (!letters.isEmpty()) {
+            TLetter letter = letters.get((int) (Math.random() * letters.size()));
+            letter.setAcceptuserid(user.getId());
+            letter.setAccepttime(new Date(System.currentTimeMillis()));
+            letter.setMstatus(2);
+            letter.updateById();
+            return true;
+        }
+        return false;
+    }
+
+    public void sendOfficeLetter(UMPushService pushService, String letterdetail, Integer acceptuserids) {
         TLetter letter = new TLetter();
         letter.setAccepttime(new Date());
         letter.setAcceptuserid(acceptuserids);
@@ -38,13 +64,7 @@ public class OfficeUtil {
             letter.setPostcode(StringUtils.leftPad(String.valueOf(letter.getId()), 6, '0'));
             letter.updateById();
         }
-        PushBean pushBean = new PushBean();
-        pushBean.setTitle("提示");
-        pushBean.setAlert("您有新的来信，请注意查收");
-        HashMap<String, String> map = new HashMap();
-        map.put("letterid", letter.getId().toString());
-        pushBean.setExtras(map);
-        pushService.pushAndroid(pushBean, acceptuserids.toString());
+        pushService.pushAndroidAlias("提示", "您有新的来信，请注意查收", acceptuserids.toString());
     }
 
     public String getLetterInfo(String letterDetail) {
@@ -55,10 +75,16 @@ public class OfficeUtil {
                 letterInfo = letterInfo.substring(0, 30);
             }
             int index = 0;
-            index = Math.max(letterInfo.indexOf("。"), index);
-            index = Math.max(letterInfo.indexOf("."), index);
-            index = Math.max(letterInfo.indexOf("?"), index);
-            index = Math.max(letterInfo.indexOf("？"), index);
+            index = Math.max(letterInfo.lastIndexOf("。"), index);
+            index = Math.max(letterInfo.lastIndexOf("."), index);
+            index = Math.max(letterInfo.lastIndexOf("！"), index);
+            index = Math.max(letterInfo.lastIndexOf("!"), index);
+            index = Math.max(letterInfo.lastIndexOf("?"), index);
+            index = Math.max(letterInfo.lastIndexOf("？"), index);
+            if (index == 0) {
+                index = Math.max(letterInfo.lastIndexOf("，") - 1, index);
+                index = Math.max(letterInfo.lastIndexOf(",") - 1, index);
+            }
             if (index > 0) {
                 letterInfo = letterInfo.substring(0, index + 1).trim();
             }

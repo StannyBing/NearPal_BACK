@@ -18,12 +18,17 @@ public class RedisClientUtil<T> {
     private JedisPool jedisPool;
 
     public boolean isEnable() {
+        Jedis jedis = null;
         try {
-            return jedisPool.getResource() != null;
+            jedis = jedisPool.getResource();
+            boolean isEnable = jedis != null;
+            if (isEnable) jedis.close();
+            return isEnable;
         } catch (Exception e) {
-            e.printStackTrace();
+            return false;
+        } finally {
+            jedis.close();
         }
-        return false;
     }
 
     public void set(String key, String value) throws Exception {
@@ -38,14 +43,22 @@ public class RedisClientUtil<T> {
     }
 
     public String get(String key) throws Exception {
-
         Jedis jedis = null;
         try {
             jedis = jedisPool.getResource();
-            return jedis.get(key);
+            if (jedis.exists(key)) {
+                return jedis.get(key);
+            }
+            return null;
+        } catch (Exception e) {
+            return null;
         } finally {
             //返还到连接池
-            jedis.close();
+            try {
+                jedis.close();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
         }
     }
 
@@ -66,6 +79,8 @@ public class RedisClientUtil<T> {
             jedis = jedisPool.getResource();
             byte[] bytes = jedis.get(key.getBytes());
             return SerializeUtil.unserialize(bytes);
+        } catch (Exception e) {
+            return null;
         } finally {
             //返还到连接池
             jedis.close();

@@ -34,4 +34,7 @@ public class UserInfoRequestDto {
     @ApiModelProperty(value = "头像")
     private Integer headicon;
 
+    @ApiModelProperty(value = "个人简介")
+    private String introduction;
+
 }

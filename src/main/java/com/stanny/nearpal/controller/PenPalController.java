@@ -2,7 +2,9 @@ package com.stanny.nearpal.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.stanny.nearpal.dto.response.LetterUserResponseDto;
+import com.stanny.nearpal.dto.response.PenpalRelationResponseDto;
 import com.stanny.nearpal.entity.BaseResult;
+import com.stanny.nearpal.entity.TLetter;
 import com.stanny.nearpal.entity.TPenPal;
 import com.stanny.nearpal.entity.TUser;
 import com.stanny.nearpal.service.LetterService;
@@ -65,6 +67,32 @@ public class PenPalController extends BaseController {
             user.setDeleteletter(deleteLetter.toString());
             if (penPal.deleteById() && user.updateById()) {
                 return success();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return fail();
+    }
+
+    @ApiOperation(value = "获取与他的笔友关系")
+    @GetMapping("/getPenpalRelation")
+    public BaseResult getPenpalRelation(Integer id) {
+        TUser user = currentUser();
+        if (user == null) {
+            return timeOut();
+        }
+        try {
+            QueryWrapper<TPenPal> penpalQuery = new QueryWrapper<>();
+            penpalQuery.lambda().eq(TPenPal::getUserid, user.getId())
+                    .eq(TPenPal::getPenpalid, id);
+            TPenPal penPal = penPalService.getOne(penpalQuery);
+            QueryWrapper<TLetter> letterQuery = new QueryWrapper<>();
+            letterQuery.lambda()
+                    .and(wrapper -> wrapper.eq(TLetter::getSenduserid, user.getId()).eq(TLetter::getAcceptuserid, id))
+                    .or((wrapper -> wrapper.eq(TLetter::getSenduserid, id).eq(TLetter::getAcceptuserid, user.getId())));
+            List<TLetter> letters = letterService.list(letterQuery);
+            if (!Objects.isNull(penPal) || !Objects.isNull(letters)) {
+                return success(new PenpalRelationResponseDto(letters, penPal));
             }
         } catch (Exception e) {
             e.printStackTrace();

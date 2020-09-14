@@ -12,11 +12,10 @@ import com.stanny.nearpal.entity.TPenPal;
 import com.stanny.nearpal.entity.TUser;
 import com.stanny.nearpal.service.LetterService;
 import com.stanny.nearpal.service.PenPalService;
+import com.stanny.nearpal.service.UMPushService;
 import com.stanny.nearpal.service.UserService;
 import com.stanny.nearpal.util.CopyPropertiesUtil;
 import com.stanny.nearpal.util.OfficeUtil;
-import com.stanny.nearpal.util.jpush.JPushService;
-import com.stanny.nearpal.util.jpush.PushBean;
 
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
@@ -31,11 +30,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.ArrayList;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Objects;
-
-import javax.servlet.http.HttpServletRequest;
 
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
@@ -60,31 +56,8 @@ public class LetterController extends BaseController {
     private PenPalService penPalService;
 
     @Autowired
-    private JPushService pushService;
+    private UMPushService pushService;
 
-    @ApiOperation(value = "新增官方信件")
-    @PostMapping("/sendOfficeLetter")
-    public BaseResult sendOfficeLetter(String letterdetail, String acceptuserids) {
-        try {
-            if (StringUtils.isNotEmpty(acceptuserids)) {//发给某人
-                String[] userids = acceptuserids.split(",");
-                for (String id : userids) {
-                    OfficeUtil.getInstance().sendOfficeLetter(pushService, letterdetail, Integer.parseInt(id));
-                }
-            } else {//发给全部
-                List<TUser> users = userService.list();
-                for (int i = 0; i < users.size(); i++) {
-                    if (users.get(i).getId() != 1) {
-                        OfficeUtil.getInstance().sendOfficeLetter(pushService, letterdetail, users.get(i).getId());
-                    }
-                }
-            }
-            return success();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        return fail();
-    }
 
     @ApiOperation(value = "新增信件")
     @PostMapping("/sendLetter")
@@ -100,18 +73,16 @@ public class LetterController extends BaseController {
             BeanUtils.copyProperties(dto, letter, CopyPropertiesUtil.getNullPropertyNames(dto));
             letter.setSenduserid(user.getId());
             long acceptMills;
-            if (dto.getAcceptuserid() == null) {
-                //设置收信时间，如果是随机信件，等待10分钟后马上转发给某个用户（为了避免遍历失败）
-                acceptMills = System.currentTimeMillis() + 1000 * 60 * 10;
-                //随机找到一个非当前用户的id
-                QueryWrapper<TUser> query = new QueryWrapper<>();
-                query.lambda().ne(TUser::getId, user.getId());
-                List<TUser> users = userService.list(query);
+            if (dto.getAcceptuserid() == null || dto.getAcceptuserid() == 1) {
+                //设置收信时间，如果是旅行信件，等待2分钟后马上转发给某个用户（为了避免遍历失败）
+                acceptMills = System.currentTimeMillis() + 1000 * 60 * 2;
+                //旅行找到一个非当前用户的id
+                List<TUser> users = userService.getRandomUser(user.getId());
                 letter.setAcceptuserid(users.get((int) (Math.random() * users.size())).getId());
-                letter.setIsrandom(1);//设置当前信件为随机信件
+                letter.setIsrandom(1);//设置当前信件为旅行信件
+                letter.setRandomuserids(letter.getAcceptuserid() + ",");
             } else {
-                //设置收信时间，如果是定向信件，最短为一天，然后在1-3天内随机
-                acceptMills = getAcceptMills(dto.getAcceptuserid(), request);
+                acceptMills = getAcceptMills(dto.getAcceptuserid());
 //                acceptMills = System.currentTimeMillis() + 1000 * 60 * 60 * 24 + (long) (Math.random() * (1000 * 60 * 60 * 24 * 2));
             }
             letter.setAccepttime(new Date(acceptMills));
@@ -122,17 +93,79 @@ public class LetterController extends BaseController {
                 addPenPal(user.getId(), dto.getAcceptuserid());
             }
             if (dto.getReplyletterid() != null && dto.getReplyletterid() != 0) {
-                //设置随机信件变为正常信件
+                //设置旅行信件变为正常信件
                 QueryWrapper<TLetter> query = new QueryWrapper<>();
                 query.lambda().eq(TLetter::getId, dto.getReplyletterid());
                 TLetter replayLetter = letterService.getOne(query);
                 replayLetter.setIsrandom(0);
                 replayLetter.updateById();
             }
+            QueryWrapper<TLetter> query2 = new QueryWrapper<>();
+            query2.lambda().eq(TLetter::getSenduserid, user.getId());
+            boolean isFirstLetter = letterService.count(query2) == 0;
             if (letter.insert()) {
                 letter.setPostcode(StringUtils.leftPad(String.valueOf(letter.getId()), 6, '0'));
                 letter.updateById();
-                return success();
+                user.setBalance(user.getBalance() - 1);
+                int changeNum = 0;
+                boolean resetFindChange = false;
+                if (isFirstLetter) {
+                    //初次写信，赠送3颗楮豆豆
+                    user.setBalance(user.getBalance() + 3);
+                } else {
+                    //几率重置寻的机会
+                    boolean isFindUsed = false;//是否已经寻过
+                    try {
+                        if (redisClientUtil.isEnable()) {
+                            String status = redisClientUtil.get(user.getId() + "_findLetter");
+                            isFindUsed = "true".equals(status);
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                    //如果是发出的旅行信件，并且今日的寻机会已用掉，将有几率重置寻
+                    if (letter.getIsrandom() != null && letter.getIsrandom() == 1 && isFindUsed) {
+                        if (Math.random() < 0.4) {
+                            resetFindChange = true;
+                            resetFindById(user.getId());
+                        }
+                    }
+                    //如果已重置寻，就不再获取豆豆
+                    if (!resetFindChange) {
+                        //根据字数增加抽中楮豆豆的几率
+                        double chance = 0.10;
+                        if (letter.getLetterdetail().length() > 1000) {
+                            chance += 0.07;
+                        } else if (letter.getLetterdetail().length() > 500) {
+                            chance += 0.05;
+                        } else if (letter.getLetterdetail().length() > 300) {
+                            chance += 0.03;
+                        } else if (letter.getLetterdetail().length() > 100) {
+                            chance += 0.01;
+                        }
+                        //根据用户剩余豆豆增加抽中的几率
+                        if (user.getBalance() < 5) {
+                            chance += 0.03;
+                        }
+                        //确认抽中
+                        if (Math.random() < chance) {
+                            changeNum = 1;
+                            if (Math.random() < 0.3) {
+                                changeNum = 2;
+                            }
+                        }
+                        user.setBalance(user.getBalance() + changeNum);
+                    }
+                }
+                user.updateById();
+                updateUser(user);
+                if (resetFindChange) {
+                    return success("恭喜，你本日的“寻”机会已重置");
+                } else if (changeNum == 0) {
+                    return success("发送成功");
+                } else {
+                    return success("恭喜你获得" + changeNum + "颗楮豆豆！");
+                }
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -141,7 +174,7 @@ public class LetterController extends BaseController {
     }
 
 
-    private long getAcceptMills(Integer acceptUserId, HttpServletRequest request) {
+    private long getAcceptMills(Integer acceptUserId) {
         //根据地理坐标设置接收时间
 //        try {
 //            TUser acceptUser = userService.getById(acceptUserId);
@@ -155,7 +188,8 @@ public class LetterController extends BaseController {
 //        } catch (Exception e) {
 //            e.printStackTrace();
 //        }
-        return System.currentTimeMillis() + 1000 * 60 * 60 * 24 + (long) (Math.random() * (1000 * 60 * 60 * 24 * 2));
+        //设置收信时间，如果是定向信件，最短为0.25天，然后在0.25-1.75天内旅行
+        return System.currentTimeMillis() + 1000 * 60 * 60 * 6 + (long) (Math.random() * (1000 * 60 * 60 * 36));
     }
 
     /**
@@ -195,6 +229,84 @@ public class LetterController extends BaseController {
         return fail();
     }
 
+    @ApiOperation(value = "获取一封旅行信件")
+    @GetMapping("/findRandomLetter")
+    public BaseResult findRandomLetter() {
+        TUser user = currentUser();
+        if (user == null) {
+            return timeOut();
+        }
+        try {
+            boolean isSuccess = false;
+            try {
+                if (redisClientUtil.isEnable()) {
+                    //限制一天只能访问一次
+                    if (redisClientUtil.get(user.getId() + "_findLetter") == null || redisClientUtil.get(user.getId() + "_findLetter").equals("false")) {
+                        redisClientUtil.set(user.getId() + "_findLetter", "true");
+                        redisClientUtil.expire(user.getId() + "_findLetter", 60 * 60 * 48);
+                        //限制寻的概率
+                        if (Math.random() < 0.3) {
+                            isSuccess = OfficeUtil.getInstance().addNewLetter(letterService, user);
+                        }
+                    } else {
+                        return fail("本日的寻已使用，发出旅行信件有几率重置哦");
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+
+            if (isSuccess) {
+                user.setBalance(user.getBalance() - 1);
+                user.updateById();
+                return success("恭喜你，找到一封旅行信件!");
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return fail("没有寻到>-<，明天再试试吧");
+    }
+
+    @ApiOperation(value = "获取我发出的信件")
+    @GetMapping("/getSendLetters")
+    public BaseResult getSendLetters() {
+        TUser user = currentUser();
+        if (user == null) {
+            return timeOut();
+        }
+        try {
+//            QueryWrapper<TLetter> query = new QueryWrapper<>();
+//            query.lambda()
+//                    .eq(TLetter::getSenduserid, user.getId())
+//                    .ne(TLetter::getIsrandom, 1);
+            List<LetterUserResponseDto> letterList = letterService.getSendLettes(user.getId());
+            if (letterList != null) {
+                return success(letterList);
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return fail();
+    }
+
+    @ApiOperation(value = "判断是否尚未发送信件")
+    @GetMapping("/isNotSend")
+    public BaseResult isNotSend() {
+        TUser user = currentUser();
+        if (user == null) {
+            return timeOut();
+        }
+        try {
+            QueryWrapper<TLetter> query = new QueryWrapper<>();
+            query.lambda().eq(TLetter::getSenduserid, user.getId());
+            return success(letterService.count(query) == 0);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return fail();
+    }
+
     @ApiOperation(value = "获取与指定用户的信件往来")
     @GetMapping("/getLettersWithId")
     public BaseResult getLettersWithId(Integer userid) {
@@ -211,6 +323,22 @@ public class LetterController extends BaseController {
                 return success(letterList);
             }
 
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return fail();
+    }
+
+    @ApiOperation(value = "获取我的旅行信件")
+    @GetMapping("/getMyRandomLetter")
+    public BaseResult getMyRandomLetter() {
+        try {
+            TUser user = currentUser();
+            if (user == null) {
+                return timeOut();
+            }
+            List<LetterUserResponseDto> letters = letterService.getRandomLetters(user.getId());
+            return success(letters);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -304,10 +432,52 @@ public class LetterController extends BaseController {
         return fail();
     }
 
+    @ApiOperation(value = "放弃信件")
+    @PostMapping("/giveupLetter")
+    public BaseResult giveupLetter(String id) {
+        try {
+            TLetter letter = letterService.getById(id);
+            if (!Objects.isNull(letter)) {
+                redirectLetter(letter);
+                return success();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return fail();
+    }
+
+    /**
+     * 每天0点0分0秒触发
+     * 清除“寻”的状态
+     */
+    @Scheduled(cron = "0 0 0 * * ?")
+    public void resetFind() {
+        try {
+            List<TUser> users = userService.list();
+            for (TUser user : users) {
+                resetFindById(user.getId());
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void resetFindById(Integer userid) {
+        try {
+            if (redisClientUtil.isEnable()) {
+                redisClientUtil.set(userid + "_findLetter", "false");
+                redisClientUtil.expire(userid + "_findLetter", 60 * 60 * 48);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     /**
      * 每隔1分钟执行一次
      * 查找到达发布时间的信件进行信件发布
-     * 查询过期的随机信件重新分配
+     * 查询过期的旅行信件重新分配
      */
     @Scheduled(fixedDelay = 1000 * 60)
     public void pulishLetter() {
@@ -319,13 +489,7 @@ public class LetterController extends BaseController {
             List<TLetter> letters = letterService.list(query);
             for (int i = 0; i < letters.size(); i++) {
                 TLetter letter = letters.get(i);
-                PushBean pushBean = new PushBean();
-                pushBean.setTitle("提示");
-                pushBean.setAlert("您有新的来信，请注意查收");
-                HashMap<String, String> map = new HashMap();
-                map.put("letterid", letter.getId().toString());
-                pushBean.setExtras(map);
-                pushService.pushAndroid(pushBean, letter.getAcceptuserid().toString());
+                pushService.pushAndroidAlias("提示", "您有新的来信，请注意查收", letter.getAcceptuserid().toString());
             }
             //数据更新
             UpdateWrapper<TLetter> update = new UpdateWrapper<>();
@@ -338,23 +502,43 @@ public class LetterController extends BaseController {
         }
 
         try {
-            //查询过期的随机信件重新分配
+            //查询过期的旅行信件重新分配
             QueryWrapper<TLetter> query = new QueryWrapper<>();
             query.lambda().eq(TLetter::getIsrandom, 1)
                     .le(TLetter::getAccepttime, new Date(System.currentTimeMillis() - 1000 * 60 * 60 * 24));
             List<TLetter> letters = letterService.list(query);
             for (TLetter letter : letters) {
-                //随机找到一个非发送用户的id
-                QueryWrapper<TUser> query1 = new QueryWrapper<>();
-                query1.lambda().ne(TUser::getId, letter.getSenduserid());
-                List<TUser> users = userService.list(query1);
-                letter.setAcceptuserid(users.get((int) (Math.random() * users.size())).getId());
-                //设置收信时间，如果是随机信件，等待10分钟后马上转发给某个用户（为了避免遍历失败）
-                letter.setAccepttime(new Date(System.currentTimeMillis() + 1000 * 60 * 10));
-                letter.updateById();
+                redirectLetter(letter);
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
+
+    /**
+     * 信件重定向
+     *
+     * @param letter
+     */
+    private void redirectLetter(TLetter letter) {
+        //随机找到一个非发送用户的id
+        List<TUser> users = userService.getRandomUser(letter.getSenduserid());
+        if (!users.isEmpty()) {
+            letter.setAcceptuserid(users.get((int) (Math.random() * users.size())).getId());
+            letter.setRandomuserids(letter.getRandomuserids() + letter.getAcceptuserid() + ",");
+            //设置收信时间，如果是旅行信件，等待2分钟后马上转发给某个用户（为了避免遍历失败）同时为了方便测试
+            //根据旅行信件流转次数决定收信的时间，避免等待过久
+            String[] ids = letter.getRandomuserids().split(",");
+            long randomTime;
+            if (ids.length > 5) {
+                randomTime = 1000 * 60 * 60 * 16;//意味着只有8小时了，而不是还有16个小时
+            } else {
+                randomTime = 1000 * 60 * 60 * 4 * (ids.length - 1);
+            }
+            letter.setAccepttime(new Date(System.currentTimeMillis() - randomTime + 1000 * 60 * 2));
+            letter.setMstatus(1);
+            letter.updateById();
+        }
+    }
+
 }

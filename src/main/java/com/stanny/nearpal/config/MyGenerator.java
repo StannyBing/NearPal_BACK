@@ -60,11 +60,11 @@ public class MyGenerator {
 
         // 数据源配置
         DataSourceConfig dsc = new DataSourceConfig();
-        dsc.setUrl("jdbc:mysql://39.106.180.194:3306/near_pal?serverTimezone=Asia/Shanghai");
+        dsc.setUrl("jdbc:mysql://49.233.40.212:3306/near_pal?serverTimezone=Asia/Shanghai");
         // dsc.setSchemaName("public");
         dsc.setDriverName("com.mysql.cj.jdbc.Driver");
-        dsc.setUsername("admin_user");
-        dsc.setPassword("123!@#qwe");
+        dsc.setUsername("user_dev");
+        dsc.setPassword("402@ddup");
         mpg.setDataSource(dsc);
 
         // 包配置

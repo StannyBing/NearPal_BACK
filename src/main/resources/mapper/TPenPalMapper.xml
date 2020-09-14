@@ -11,7 +11,7 @@
         where
             b.userid = #{userid, jdbcType=INTEGER}
             and b.penpalid = a.id
-            order by b.createtime
+            order by b.createtime desc
     </select>
 
 </mapper>

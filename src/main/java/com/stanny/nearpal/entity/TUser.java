@@ -67,4 +67,10 @@ public class TUser extends Model<TUser> {
 
     @ApiModelProperty(value = "用户坐标（用于计算收信时间）")
     private String userlocation;
+
+    @ApiModelProperty(value = "用户app版本")
+    private String appversion;
+
+    @ApiModelProperty(value = "用户简介")
+    private String introduction;
 }

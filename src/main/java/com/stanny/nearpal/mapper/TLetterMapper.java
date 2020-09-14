@@ -13,5 +13,10 @@ public interface TLetterMapper extends BaseMapper<TLetter> {
 
     List<LetterUserResponseDto> selectAcceptLetters(Integer userid);
 
+    List<LetterUserResponseDto> selectSendLetters(Integer userid);
+
+    List<LetterUserResponseDto> selectMyRandomLetter(Integer userid);
+
     List<LetterUserResponseDto> selectLettersWithId(Integer userid, Integer withid);
+
 }

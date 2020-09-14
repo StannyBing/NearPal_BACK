@@ -19,6 +19,28 @@
                     tb_user
                 where id = #{userid, jdbcType=INTEGER}
             )) = 0
+        ORDER BY a.accepttime DESC
+    </select>
+
+    <select id="selectSendLetters" resultType="com.stanny.nearpal.dto.response.LetterUserResponseDto"
+            parameterType="java.lang.Integer">
+        select distinct
+            a.*, b.nickname, b.headicon
+        from
+            tb_letter a,
+            tb_user b
+        where
+            a.senduserid = #{userid, jdbcType=INTEGER}
+            AND b.id = a.senduserid
+            AND a.mstatus != 1
+            and a.israndom != 1
+            and LOCATE(','+a.id, (
+                select
+                    deleteletter
+                from
+                    tb_user
+                where id = #{userid, jdbcType=INTEGER}
+            )) = 0
         ORDER BY a.sendtime DESC
     </select>
 
@@ -56,6 +78,20 @@
                     where id = #{userid, jdbcType=INTEGER}
                 )) = 0
             )
+        ORDER BY a.sendtime DESC
+    </select>
+
+    <select id="selectMyRandomLetter" resultType="com.stanny.nearpal.dto.response.LetterUserResponseDto"
+            parameterType="java.lang.Integer">
+        select distinct
+            a.*, b.nickname, b.headicon
+        from
+            tb_letter a,
+            tb_user b
+        where
+            a.senduserid = #{userid, jdbcType=INTEGER}
+            and a.israndom = 1
+            and a.senduserid = b.id
         ORDER BY a.sendtime DESC
     </select>
 </mapper>

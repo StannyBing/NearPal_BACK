@@ -22,6 +22,16 @@ class LetterServiceImpl extends ServiceImpl<TLetterMapper, TLetter> implements L
     }
 
     @Override
+    public List<LetterUserResponseDto> getSendLettes(Integer userid) {
+        return baseMapper.selectSendLetters(userid);
+    }
+
+    @Override
+    public List<LetterUserResponseDto> getRandomLetters(Integer userid) {
+        return baseMapper.selectMyRandomLetter(userid);
+    }
+
+    @Override
     public List<LetterUserResponseDto> getLettersWithId(Integer userid, Integer withid) {
         return baseMapper.selectLettersWithId(userid, withid);
     }

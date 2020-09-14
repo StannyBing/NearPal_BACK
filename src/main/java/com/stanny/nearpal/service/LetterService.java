@@ -17,6 +17,10 @@ public interface LetterService extends IService<TLetter> {
 
     List<LetterUserResponseDto> getAcceptLettes(Integer userid);
 
+    List<LetterUserResponseDto> getSendLettes(Integer userid);
+
+    List<LetterUserResponseDto> getRandomLetters(Integer userid);
+
     List<LetterUserResponseDto> getLettersWithId(Integer userid, Integer withid);
 
 }

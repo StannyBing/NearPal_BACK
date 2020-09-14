@@ -60,7 +60,7 @@ public class LetterUserResponseDto {
     @ApiModelProperty(value = "收件人id")
     private Integer acceptuserid;
 
-    @ApiModelProperty(value = "是否为随机信件")
+    @ApiModelProperty(value = "是否为旅行信件")
     private Integer israndom;
 
     @ApiModelProperty(value = "昵称")
@@ -68,4 +68,7 @@ public class LetterUserResponseDto {
 
     @ApiModelProperty(value = "头像")
     private Integer headicon;
+
+    @ApiModelProperty(value = "旅行过程用户id集合")
+    private String randomuserids;
 }

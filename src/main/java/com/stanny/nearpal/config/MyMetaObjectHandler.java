@@ -20,6 +20,9 @@ public class MyMetaObjectHandler implements MetaObjectHandler {
         if (metaObject.hasSetter("sendtime")) this.setFieldValByName("sendtime", new Date(System.currentTimeMillis()), metaObject);
         if (metaObject.hasSetter("createtime")) this.setFieldValByName("createtime", new Date(System.currentTimeMillis()), metaObject);
         if (metaObject.hasSetter("registtime")) this.setFieldValByName("registtime", new Date(System.currentTimeMillis()), metaObject);
+        if (metaObject.hasSetter("feeddate")) this.setFieldValByName("feeddate", new Date(System.currentTimeMillis()), metaObject);
+        if (metaObject.hasSetter("updatetime")) this.setFieldValByName("updatetime", new Date(System.currentTimeMillis()), metaObject);
+        if (metaObject.hasSetter("sharetime")) this.setFieldValByName("sharetime", new Date(System.currentTimeMillis()), metaObject);
     }
 
     @Override

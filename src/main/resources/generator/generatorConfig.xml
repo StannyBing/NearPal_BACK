@@ -17,8 +17,8 @@
 
         <!-- 定义如何连接目标数据库 -->
         <jdbcConnection driverClass="com.mysql.jdbc.Driver"
-                        connectionURL="jdbc:mysql://39.106.180.194:3306/near_pal?serverTimezone=UTC" userId="admin_user"
-                        password="123!@#qwe">
+                        connectionURL="jdbc:mysql://49.233.40.212:3306/near_pal?serverTimezone=UTC" userId="user_dev"
+                        password="402@ddup">
         </jdbcConnection>
 
         <!-- 类型转换 -->
@@ -59,6 +59,14 @@
         </table>
 
         <table tableName="tb_penpal" domainObjectName="TPenPal" enableCountByExample="false" enableUpdateByExample="false"
+               enableDeleteByExample="false" enableSelectByExample="false" selectByExampleQueryId="false">
+        </table>
+
+        <table tableName="tb_feedback" domainObjectName="TFeedBack" enableCountByExample="false" enableUpdateByExample="false"
+               enableDeleteByExample="false" enableSelectByExample="false" selectByExampleQueryId="false">
+        </table>
+
+        <table tableName="tb_share" domainObjectName="TShare" enableCountByExample="false" enableUpdateByExample="false"
                enableDeleteByExample="false" enableSelectByExample="false" selectByExampleQueryId="false">
         </table>
     </context>

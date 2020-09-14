@@ -1,30 +1,36 @@
 package com.stanny.nearpal.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Assert;
+import com.stanny.nearpal.dto.reqest.ChangePwdRequestDto;
 import com.stanny.nearpal.dto.reqest.LoginRequestDto;
 import com.stanny.nearpal.dto.reqest.RegisterRequestDto;
+import com.stanny.nearpal.dto.reqest.UserForgetRequestDto;
 import com.stanny.nearpal.dto.reqest.UserInfoRequestDto;
 import com.stanny.nearpal.dto.reqest.VisitLoginRequestDto;
 import com.stanny.nearpal.entity.BaseResult;
 import com.stanny.nearpal.entity.TPenPal;
 import com.stanny.nearpal.entity.TUser;
+import com.stanny.nearpal.service.LetterService;
 import com.stanny.nearpal.service.PenPalService;
+import com.stanny.nearpal.service.UMPushService;
 import com.stanny.nearpal.service.UserService;
 import com.stanny.nearpal.util.CopyPropertiesUtil;
-import com.stanny.nearpal.util.IpLocationUtil;
 import com.stanny.nearpal.util.OfficeUtil;
-import com.stanny.nearpal.util.jpush.JPushService;
 
-import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.Objects;
 
 import javax.servlet.http.HttpServletRequest;
@@ -40,16 +46,20 @@ import io.swagger.annotations.ApiOperation;
 @RequestMapping("user")
 @RestController
 @Api(tags = "用户")
+@EnableScheduling
 public class UserController extends BaseController {
 
     @Autowired
     private UserService userService;
 
     @Autowired
+    private LetterService letterService;
+
+    @Autowired
     private PenPalService penPalService;
 
     @Autowired
-    private JPushService pushService;
+    private UMPushService pushService;
 
     @Autowired
     HttpServletRequest request;
@@ -62,7 +72,7 @@ public class UserController extends BaseController {
         QueryWrapper<TUser> query = new QueryWrapper<>();
         query.lambda().eq(TUser::getPassword, dto.getPassword())
                 .and(wrapper -> wrapper.eq(TUser::getUsername, dto.getUsername()).or()
-                        .eq(TUser::getTelephone, dto.getTelephone()));
+                        .eq(TUser::getTelephone, dto.getUsername()));
         TUser tempUser = userService.getOne(query);
         if (Objects.isNull(tempUser)) {
             return fail("账户或密码错误");
@@ -91,8 +101,10 @@ public class UserController extends BaseController {
                     return fail("该用户不是游客账户");
                 }
                 QueryWrapper<TUser> query = new QueryWrapper<>();
-                query.lambda().and(wrapper -> wrapper.eq(TUser::getUsername, dto.getUsername()).or()
-                        .eq(TUser::getTelephone, dto.getTelephone()));
+                query.lambda().eq(TUser::getUsername, dto.getUsername())
+                        .or(wrapper -> wrapper.eq(TUser::getTelephone, dto.getTelephone())
+                                .ne(TUser::getTelephone, "")
+                                .isNotNull(TUser::getTelephone));
                 TUser tempUser = userService.getOne(query);
                 if (Objects.nonNull(tempUser)) {
                     return fail("该用户名/手机号已存在");
@@ -107,10 +119,14 @@ public class UserController extends BaseController {
             } else {
                 user = new TUser();
                 BeanUtils.copyProperties(dto, user);
+                user.setBalance(10);
+                user.setNickname(dto.getUsername());
                 user.setLogintype(0);
                 QueryWrapper<TUser> query = new QueryWrapper<>();
-                query.lambda().and(wrapper -> wrapper.eq(TUser::getUsername, dto.getUsername()).or()
-                        .eq(TUser::getTelephone, dto.getTelephone()));
+                query.lambda().eq(TUser::getUsername, dto.getUsername())
+                        .or(wrapper -> wrapper.eq(TUser::getTelephone, dto.getTelephone())
+                                .ne(TUser::getTelephone, "")
+                                .isNotNull(TUser::getTelephone));
                 TUser tempUser = userService.getOne(query);
                 if (Objects.nonNull(tempUser)) {
                     return fail("该用户名/手机号已存在");
@@ -119,6 +135,9 @@ public class UserController extends BaseController {
                     updateUser(user);
                     setLocation(user);
                     sendNearPalLetter(user);
+//                    addNewLetter(user);
+//                    OfficeUtil.getInstance().addNewLetter(letterService, user);
+                    addPenPal(user.getId(), 1);
                     return success(user);
                 }
             }
@@ -134,10 +153,14 @@ public class UserController extends BaseController {
         TUser user = new TUser();
         try {
             user.setLogintype(5);
+            user.setNickname("游客");
             if (user.insert()) {
                 setLocation(user);
                 updateUser(user);
                 sendNearPalLetter(user);
+//                addNewLetter(user);
+//                OfficeUtil.getInstance().addNewLetter(letterService, user);
+                addPenPal(user.getId(), 1);
                 return success(user);
             }
         } catch (Exception e) {
@@ -182,6 +205,93 @@ public class UserController extends BaseController {
         return fail();
     }
 
+    @ApiOperation(value = "根据个人信息找回用户")
+    @PostMapping("/forgetPwd")
+    private BaseResult forgetPwd(@RequestBody UserForgetRequestDto dto) {
+        try {
+            QueryWrapper<TUser> query = new QueryWrapper<>();
+            query.lambda()
+                    .and(wrapper -> wrapper.eq(TUser::getUsername, dto.getUsername()).or().isNull(TUser::getUsername))
+                    .and(wrapper -> wrapper.eq(TUser::getNickname, dto.getNickname()).or().isNull(TUser::getNickname))
+                    .and(wrapper -> wrapper.eq(TUser::getTelephone, dto.getTelephone()).or().isNull(TUser::getTelephone));
+            List<TUser> users = userService.list(query);
+            if (users.size() == 1) {
+                return success(users.get(0));
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return fail();
+    }
+
+    @ApiOperation(value = "修改密码")
+    @PostMapping("/changePwd")
+    private BaseResult changePwd(@RequestBody ChangePwdRequestDto dto) {
+        try {
+            TUser user = userService.getById(dto.getId());
+            user.setPassword(dto.getPassword());
+            user.setLogintype(5);
+            if (user.updateById()) {
+                return success();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return fail();
+    }
+
+    @ApiOperation(value = "根据用户id或用户名增加楮豆豆")
+    @PostMapping("/addChuBeans")
+    public BaseResult addChuBeans(@RequestParam(defaultValue = "0") Integer userid, @RequestParam(defaultValue = "") String nickname, @RequestParam(defaultValue = "0")Integer num) {
+        try {
+            if (num <= 0) {
+                return fail("楮豆豆增加量不能小于0");
+            }
+            TUser tempUser = null;
+            if (userid == 0) {
+                QueryWrapper<TUser> wrapper = new QueryWrapper<>();
+                wrapper.lambda().eq(TUser::getNickname, nickname);
+                tempUser = userService.getOne(wrapper);
+                if (Objects.isNull(tempUser)) {
+                    return fail("该用户不存在");
+                }
+            } else {
+                QueryWrapper<TUser> wrapper = new QueryWrapper<>();
+                wrapper.lambda().eq(TUser::getId, userid);
+                tempUser = userService.getOne(wrapper);
+                if (Objects.isNull(tempUser)) {
+                    return fail("该用户不存在");
+                }
+            }
+            tempUser.setBalance(tempUser.getBalance() + num);
+            if (tempUser.updateById()) {
+                return success();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return fail();
+    }
+
+    @ApiOperation(value = "获取我的信息")
+    @GetMapping("/getMyInfo")
+    public BaseResult getMyInfo(String appversion) {
+        TUser user = currentUser();
+        if (user == null) {
+            return timeOut();
+        }
+        user = user.selectById();//查找新的
+//        UpdateWrapper<TUser> query = new UpdateWrapper<TUser>();
+//        query.lambda().eq(TUser::getId, user.getId())
+//                .set(TUser::getAppversion, appversion);
+        user.setAppversion(appversion);
+//        user.update(query);
+        user.updateById();
+        user = user.selectById();//查找新的
+        updateUser(user);
+        return success(user);
+    }
+
     @ApiOperation(value = "根据id获取用户信息")
     @GetMapping("/getInfoById")
     public BaseResult getInfoById(String id) {
@@ -202,12 +312,32 @@ public class UserController extends BaseController {
     }
 
     private void setLocation(TUser user) {
-        if (StringUtils.isEmpty(user.getUserlocation())) {
-            String ip = IpLocationUtil.getAddress(request);
-            user.setUserlocation(ip);
-            user.updateById();
-        }
+//        if (StringUtils.isEmpty(user.getUserlocation())) {
+//            String ip = IpLocationUtil.getAddress(request);
+//            user.setUserlocation(ip);
+//            user.updateById();
+//        }
     }
+
+//    /**
+//     * 匹配一份旅行信件
+//     *
+//     * @param user
+//     */
+//    private void addNewLetter(TUser user) {
+//        QueryWrapper<TLetter> query = new QueryWrapper<>();
+//        query.lambda().eq(TLetter::getIsrandom, 1)
+//                .le(TLetter::getAccepttime, new Date(System.currentTimeMillis() - 1000 * 60 * 60 * 12))
+//                .ne(TLetter::getMstatus, 3);//将未读的还剩不到12个小时就会过期的旅行信件重新分配给新人
+//        List<TLetter> letters = letterService.list(query);
+//        if (!letters.isEmpty()) {
+//            TLetter letter = letters.get((int) (Math.random() * letters.size()));
+//            letter.setAcceptuserid(user.getId());
+//            letter.setAccepttime(new Date(System.currentTimeMillis()));
+//            letter.setMstatus(2);
+//            letter.updateById();
+//        }
+//    }
 
     /**
      * 发送官方欢迎信件
@@ -222,12 +352,12 @@ public class UserController extends BaseController {
                 "慢慢写下自己的思念，自己的生活，写下天气变化，写下发生的趣事，写下听到的笑话，写下枝头小鸟的叫声，写下楼下市场的叫卖，写下对明年的期许，写下对" +
                 "友人的安慰，写下对世界的看法，写下今天天气很好，心情很好，希望你也很好，写下绵绵细雨，心中哀愁，写下心中情义，你过得可好，写下案台上猫咪捣乱，" +
                 "按下了点点梅花印，写下期望收到你的来信。\n" +
-                "　　楮先生，原来其实叫做尺书，是我想了很久才想出来的名字，尺书，在古语中指书籍、书信、诏书，但是，被抢注了，没办法，我只能重新找，就找到了这里的楮先生" +
-                "楮先生是故人将文房四宝中的纸进行拟人化后出现的一个词语，用来指纸，其实你们叫我猪先生，也挺不错的。通过楮先生寄出去的信件，并不会马上被收信人收到，而是会根据发信人与收信人的地理位置" +
+                "　　楮先生，原来其实叫做尺书，是我想了很久才想出来的名字，尺书，在古语中指书籍、书信、诏书，但是，被抢注了，没办法，我只能重新找，就找到了这里的楮先生，" +
+                "楮先生是古人将文房四宝中的宣纸进行拟人化后出现的一个词语。通过楮先生寄出去的信件，并不会马上被收信人收到，而是会根据发信人与收信人的地理位置" +
                 "（地理位置取自注册时的网络地址，根据该地址仅能定位到所属省份，不会获取到您的具体位置）计算出距离，再根据天气状况、写信时间、回信时间等因素，计算出来的" +
                 "时间，我试着尽可能的去贴合写信的流程。（是的。我这里走的是EMS，而不是京东次日达，靠的是随缘）\n" +
-                "　　偶尔你还会收到一些随机信件，当然你也可以直接写一封，我们会将信件发给某一位笔友，他会有24小时的时间决定是否回信，成为你的笔友，24小时后，信件" +
-                "会继续它的旅程，走到下一位的信箱里。所以你不必担心自己的信件消失在路上，总有一天，它会带着另一封信，带着一个愿意走近你的生活，倾听你的心声的人，来到" +
+                "　　偶尔你还会收到一些旅行信件，当然你也可以直接写一封，我们会将信件发给某一位笔友，他会有24小时的时间决定是否回信，成为你的笔友，24小时后，信件" +
+                "会继续它的旅程，走到下一位的信箱里。所以你不必担心自己的信件消失在路上，总有一天，它会带着另一封信，带着一个愿意走近你的灵魂，倾听你的心声的人，来到" +
                 "你的身边。\n" +
                 "　　只要你，愿意等待。\n" +
                 "　　我一直相信，等待这件事，本身就代表了很多的可能，希望楮先生能带给你更多的一种可能。希望在这里，你能找到真正懂你的人。\n" +
@@ -238,13 +368,10 @@ public class UserController extends BaseController {
                 "　　3、请不要轻易邀请或同意进行线下见面，楮先生希望你能安全。\n" +
                 "　　4、请不要一次只发几个字。。。，毕竟这是写信，要几天后才收的到，你可以多写一点，我们提供了暂存功能，你也可以一天写一点，当然，这只是建议。\n" +
                 "　　\n" +
-                "　　楮先生目前处于才开始的状态，可能会存在很多不尽人意的地方，甚至有些问题的存在，如果你有发现任何问题，欢迎向我进行反馈，我一直在这里等待着你的。" +
-                "楮先生目前暂未进行任何盈利方面的操作，可能在以后会逐步加入盈利的地方，希望大家理解，一个应用需要存活下去，需要一定的资金的支持，目前支持我走下去的，还是" +
-                "我对楮先生的期望。但是，我在这里保证，即使后期会加入盈利，也仍然会提供免费的写信功能，当然这都是很久以后的事情了，前提是楮先生能继续走下去，能在这个世界继续存活下去" +
-                "。\n" +
+                "　　楮先生目前处于才开始的状态，可能会存在很多不尽人意的地方，甚至有些问题的存在，如果你有发现任何问题，欢迎向我进行反馈，我一直在这里等待着你。\n" +
                 "　　我对楮先生一直有一个期望，就是有一天，楮先生能不仅仅存在于我们的国家，能走向更多的国家，由我来提供翻译功能，让你能和这个世界各个角落的人进行交流。我，想和这个世界说说话。" +
-                "我相信，这并不是一件需要等待很久的事情。\n" +
-                "　　啰啰嗦嗦了这么久，希望你不要厌烦，回复这封信，将默认发送一封随机信件。希望在楮先生，你能找到那个与你心灵相通的人。\n" +
+                "我希望，这并不是一件需要等待很久的事情。\n" +
+                "　　啰啰嗦嗦了这么久，希望你不要厌烦，回复这封信，将默认发送一封旅行信件。初次写信将获得3颗楮豆豆。希望在楮先生，你能找到那个与你心灵相通的人。\n" +
                 "　　祝好！", user.getId());
         addPenPal(user.getId(), 1);
     }
@@ -264,6 +391,22 @@ public class UserController extends BaseController {
             penPal.setUserid(userid);
             penPal.setPenpalid(penpalid);
             penPal.insert();
+        }
+    }
+
+    /**
+     * 每月1号0点0分0秒触发
+     * 给不足10颗楮豆豆的用户补齐10颗
+     */
+    @Scheduled(cron = "0 0 0 1 * ?")
+    public void addBalance() {
+        try {
+            UpdateWrapper<TUser> update = new UpdateWrapper<>();
+            update.lambda().lt(TUser::getBalance, 10)
+                    .set(TUser::getBalance, 10);
+            userService.update(update);
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 }
